@@ -1,0 +1,619 @@
+\documentclass[a4paper]{article}
+
+%\VignetteIndexEntry{LFDREmpiricalBayes}
+
+\usepackage[margin=1.0in]{geometry}
+
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{changepage}
+\usepackage{url}
+%\usepackage{cite}
+\usepackage{natbib}
+\usepackage{indentfirst}
+\usepackage{hyperref} %%for links and emails
+\hypersetup{%%for links and emails
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=black,
+    filecolor=magenta
+    %urlcolor=cyan,
+}
+\urlstyle{same}
+
+\overfullrule=7pt
+\setlength{\parskip}{1em}
+
+\begin{document}
+
+\title{Using the \texttt{LFDREmpiricalBayes} Package}
+\author{Ali Karimnezhad, Johnary Kim, Anna Akpawu and David R. Bickel}
+\maketitle
+
+\SweaveOpts{concordance=TRUE}
+
+\begin{abstract}
+The package \texttt{LFDREmpiricalBayes} contains a series of functions aiming at analyzing the association of single nucleotide polymorphisms (SNPs) to some particular disease. The functions use estimated local false discovery rates (LFDRs) of SNPs within a sample population that we define as a ``reference class''. Of the proposed methods, the maximum entropy method is based on ratio of two likelihood functions generated on the basis of two alternative reference classes. The other methods are based on robust Bayes approaches and are applicable to more than two reference classes. The explanations in this report allow for a better understanding of the basic ideas of how the functions in this package work as well as detailed examples that are useful in analyzing a given data set. Although SNPs are used throughout this document, other biological data such as protein data and other gene data can be used.
+\end{abstract}
+
+\tableofcontents
+
+% Replace the slides reference and just use his paper instead
+
+\section{Introduction}
+
+The package \texttt{LFDREmpiricalBayes} contains a series of functions aiming at analyzing the association of SNPs to some particular disease. These functions include \texttt{ME.log}, \texttt{caution.parameter.actions}, \texttt{SEL.caution.parameter} and  \texttt{PRGM.action}. Details and the theories behind these functions have been extensively discussed in \citet{AP2016}.
+
+
+The function \texttt{ME.log} uses the new maximum entropy approach given two reference classes (the definition of a reference class is provided in details in subsection \ref{Ref.Class}). The new ME approach will consider both reference classes and provides a vector of more reliable LFDR estimates copmared to the input vector of LFDRs computed based on the two alternative reference classes \citep{AP2016}. %This vector can then be further incorporated in \texttt{caution.parameter.actions} and \texttt{SEL.caution.parameter}.
+
+The function \texttt{ME.log} as well as the functions \texttt{caution.parameter.actions}, \texttt{SEL.caution.parameter} and  \texttt{PRGM.action} use estimated values of local false discovery rate (LFDR) as input elements. Although in this report we use maximum likelihood (ML) LFDR estimates, all these functions except \texttt{ME.log} work with other estimates of LFDR\footnote[2]{such as binomial-based LFDR estimator (BBE) or histogram-based LFDR estimator (HBE) \citep{YZ2013}.}.
+
+
+\texttt{caution.parameter.actions} provides three robust Bayes actions (based on three different values for a caution parameter) to determine if a specific SNP is associated with some disease. As well, \texttt{SEL.caution.parameter} provides three robust Bayes estimates of LFDR (based on three different values for a caution parameter) correspoding to a specific SNP. The estimates can be used to determine if the SNP is associated with the relevent disease. \texttt{PRGM.action} provides a robust Bayes value of the correspoding LFDR estimates. These three functions are based on two or more reference classes.
+
+This vignette was created to demonstrate practical examples for each function in \texttt{LFDREmpiricalBayes} so that users can better understand the code output. It provides comprehensive examples of the functions, their corresponding interpretation, and a user-friendly explanation of the theoretical aspects associated with the functions and the methodologies developed in \citet{AP2016}.
+
+\section{How to Install and Use This Package} %Don't forget to cite packages!
+In order to install and use this package, simply input the following commands into the \texttt{R} console.
+
+<<installation_thispkg, eval=FALSE, results=hide>>=
+source("https://bioconductor.org/biocLite.R")
+biocLite("LFDREmpiricalBayes")
+@
+
+Note that this package uses other functions in the packages \texttt{matrixStats} and \texttt{stats}. This package also uses the function \texttt{lfdr.mle} from the package \texttt{LFDR.MLE}. To install the packages and use them, input the following into the \texttt{R} console.
+
+<<installation_qvalue, eval=FALSE, results=hide>>=
+install.packages(c("LFDR.MLE","matrixStats","stats"))
+@
+
+Ensure that the following packages are loaded before using \texttt{LFDREmpiricalBayes}:
+<<loadPkgs, eval=FALSE, results=hide>>=
+library(LFDR.MLE)
+library(matrixStats)
+library(stats)
+@
+
+For more information, consult their respective documentation.
+
+\section{Basic Definitions}
+
+%When designing an experiment based on the the maximum entropy method, it is expected that a large set of data is generated experimentally.  The set of data is then converted into a series of test statistics using a statistical distribution like the non-central chi-square distribution \cite{AP2016}, where it is further converted into LFDR estimates using the ML approach. Given LFDR estimates from \texttt{ME.log}, \texttt{caution.parameter.methods} provides a decision-theoretic approach in forming a large scale hypothesis problem and draws conclusions based on the experimental data set \cite{BE2005}, \cite{AE2016}. Also, \texttt{SEL.caution.parameter} estimates $A_i$ the hypothesis indicator.  of the LFDR estimates.
+
+Before detailing the important functions of this package, a few concepts relating to relevant methods of the functions should be explained.
+
+
+\subsection{Reference Classes}\label{Ref.Class}
+One of the motivating factors in estimating LFDRs, as described in \citet{AP2016}, involves choosing which set of LFDR estimates gives the best estimates.  The main reason for this is due to having two different sets of LFDR estimates, which is referred to as a reference class.  With the two reference classes, there lies a situation in which a subset of LFDR estimates can fall into both classes.  In this case, the decision on whether to favour one class over the other is highly important.
+
+Leading to favouring one class over another, two different reference class definitions were considered as two different cases.  Those two cases are described in more details in Parts \ref{Ref.Class1} and \ref{Ref.Class2}.
+
+\subsubsection{Considering Separate and Combined Reference Classes}\label{Ref.Class1}
+
+\begin{figure}[h]
+ \begin{center}
+  \includegraphics[width=75mm]{SNP_Example.jpg}
+ \end{center}
+ \caption{A visual diagram illustrating the separate and combined classes \citep{AE2016}.}\label{Fig1}
+\end{figure}
+
+In \textbf{Figure 1}, consider the two groups: ncRNA and UTR-3 groups containing 3 and 2 SNPs, respectively.  Considering a series of LFDR estimates for SNPs in both the ncRNA and UTR-3 regions, a separate class considers only a small subset of the region seen in Figure \ref{Fig1}.  In this case, the region ncRNA containing the first three SNPs (i.e. SNP1, SNP2 and SNP3) is a separate reference class.  The combined referece class is defined as the class that contains all SNPs in both the ncRNA and UTR-3 regions (i.e. the green rectangular). Now, to estimate LFDR for each of ncRNA SPNs, for example SNP1, there are two reference classes with red and green regions in Figure \ref{Fig1}. Determining which of the two reference classes (separate or combined) should be used to estimate the corresponding LFDR is the motivation of using the functions provided in this package.
+
+\subsubsection{Considering First and Second Reference Class Terms}\label{Ref.Class2}
+
+\begin{figure}[h]
+ \begin{center}
+  \includegraphics[width=75mm]{SNP_Intersection.jpg}
+ \end{center}
+ \caption{This figure illustrates the first and second reference classes and the intersection.}\label{Fig2}
+\end{figure}
+
+In Figure \ref{Fig2}, we consider the first class in red to be exonic SNPs (SNP2, SNP3 and SNP4) and the second class in green to be ncRNA SNPs (containing SNP3, SNP4, SNP5 and SNP6). The intersection contains SNP3 and SNP4. The corresponding LFDR estimates based on the first class and the second class can be different. Determining an appropriate reference class to be used to reach a reliable LFDR estimate is our motivation.
+
+%\subsection{Sub-functions of \texttt{ME.log}}
+
+%\subsubsection{Log Likelihood functions}
+%The main function \texttt{ME.log} uses 2 likelihood functions \texttt{log.likelihood} and \texttt{log.likelihood1} based on 2 different models. Combining different models with different prior distribution is useful in order to find an optimal model for posterior inference actions \cite{DB2015}. These functions return an estimate of the likelihood value set. Generally speaking, it is recommended to check the model and note any posterior distribution in order to select the best model given the dataset \cite{DB2015}.
+
+%\subsubsection{Selection of a reference class: \texttt{true.lfdr1}}
+%\texttt{true.lfdr1} is also a sub-function of the \texttt{ME.log} function. It selects the best reference class (between the combined and separate reference class) given the dataset \cite{AP2016}.
+
+
+\subsection{Multiple Hypothesis Testing}
+Performing multiple hypothesis testing is important in terms of evaluating the relationship between a set of data within a population to some condition. The most general case in a biological perspective can be whether or not there is an association between an SNP and a particular disease. For example, \citet{AP2016} performed a genome-wide association analysis for the coronary heart disease \citep{WELL}.
+
+The framework of the multiple hypothesis testing problem considered here is as follows. For an \textit{i}th SNP, $i=1,2,\ldots,N$, the null hypothesis $H_{0i}:A_{i}=0$ is tested against the alternative hypothesis $H_{1i}:A_{i}=1$, where $A_{i}$ is an indicator that there is an association between SNP $i$ and the disease. Under the null hypothesis, i.e. $A_{i}=0$, the $i$th SNP is supposed not to be associated with (affected by) the underlying
+disease or treatment.
+
+\subsection{Local False Discovery Rates Estimation}
+
+\textbf{LFDR} is the posterior probability that an SNP is not associated with a particular disease \citep{AP2016}. In a biological sense, the data are reduced to some test statistics $t_1$, $t_2$,$\ldots$,$t_N$, and each test statistic $t_i$ represents a value for a particular SNP, say SNP$_i$ (i.e. $t_1$ represents SNP$_1$, $t_2$ represents SNP$_2$,$\ldots$, $t_N$ represents SNP$_N$). Then, LFDR$_i$, i.e. the probability that SNP$_i$ is not associated with the underlying disease given the information that the value of the test statistics is $t_i$, is estimated.
+
+
+\subsection{Bayes Action on LFDRs Applied to Hypothesis Testing}
+A Bayes action is used to test a particular null hypothesis $A_i$. Once an estimated LFDR for SNP $i$ is available, the Bayes action (decision) correspoding to that SNP is considered as below
+\begin{equation} \label{eq:0}
+  \text{Decision} =
+  \begin{cases}
+      \mbox{ \texttt{0} if estimated LFDR$_i$ > threshold,}\\
+      \mbox{ \texttt{1} if estimated LFDR$_i$ $\leq$ threshold.} \\
+  \end{cases}
+\end{equation}
+
+The interpretation of such a decision is as follows. If an estimated LFDR$_i$ corresponding to SNP$_i$ is less than or equal to the pre-determined threshold, then the null hypothesis is rejected and as a result, the SNP$_i$ is considered to be associated with the disease. Otherwise, the null hypothesis would fail to be rejected and consequently, SNP$_i$ is inferred not be be associated with the disease \citep{AP2016}.
+The threshold considered above is determined by considering some loss values which are the subject of the next part. \\
+
+%Loss values are an important part in decision theory. They are based on a type-I error (false-positive) and a type-II error (false-negative).  In using loss values, a value or a weight is assigned to either one of type-I or type-II errors. The weight is based on an incurred penalty in obtaining one of those errors. Due to the fact that a type-I error is a less desirable outcome than a type-II error, the weighting of a loss value associated with a type-I error would be higher than that of a type-II error.
+
+%As it will be seen later in \textbf{6.1.2}, those two values were defined in \texttt{caution.parameter.actions}.
+
+%\subsubsection{Loss Function Values}
+%For each of the values $l_I$ and $l_{II}$, a cost value of obtaining one of each of the errors (type-I and type-II error). Recalling that type-I errors should be avoided as much as possible, it is recommended that $l_I$ be greater than $l_{II}$. To do so, a threshold of 0.2 was chosen \cite{BE2005}, assigning a value of \texttt{4} to $l_I$ and a value of \texttt{1} to $l_{II}$. Thus, by using such a threshold value, the Bayes action (\ref{eq:0}) can be applied to a multiple hypothesis testing problem.
+
+
+\subsubsection{Zero-One Loss Function}\label{ZO}
+The threshold considered in the previous subsection is determind by considering some loss values
+as important components in the decision theory. The loss values considered are based on type-I (false-positive) and type-II (false-negative) errors.  In using loss values, a value or a weight is assigned to either one of a type-I error or a type-II error.  The weight is based on an incurred penalty associated in obtaining one of those errors. Introducing the fact that a type-I error is a less desirable outcome than a type-II error, the weighting of a loss value associated with a type-I would be higher than that of a type-II error.
+
+
+Referring to the type-I and type-II errors by the loss values $l_I$ and $l_{II}$, \citet{AP2016} use the following loss function
+$$
+  L_{ZO} =
+  \begin{cases}
+      \mbox{ \texttt{0} if $\delta_i$ = $A_i$ $\in$ \{0,1\},}\\
+      \mbox{ $l_I$ if $\delta_i$ = \texttt{1}, $A_i$ = \texttt{0},} \\
+      \mbox{ $l_{II}$ if $\delta_i$ = 0, $A_i$ = \texttt{1}},
+  \end{cases}
+$$
+where $\delta_i=\delta(t_i)$ is the decision rule (\ref{eq:0}).
+
+
+The decision rule (\ref{eq:0}) is called the Bayes rule if the threshold is taken to be
+\begin{equation} \label{eq:1}
+\text{threshold} = \frac{l_{II}}{l_I+l_{II}}.
+\end{equation}
+
+Recalling that type-I error should be avoided as much as possible, it is recommended that $l_I$ be greater than $l_{II}$. Following this recommendation, a threshold of 0.2 was chosen \citep{BE2005}, assigning a value of \texttt{4} to $l_I$ and a value of \texttt{1} to $l_{II}$ .
+
+
+In addition to the Bayes action, \texttt{caution.parameter.actions} uses a decision-theoretic approach in forming a large scale hypothesis problem and draws conclusions based on the experimental data set. \texttt{caution.parameter.actions} applies some additional information in terms of reference classes (two or more) to test the null hypothesis based on some avaialbe estimated LFDR values. The output from this function gives two values 0 and 1 for each caution-type decision.
+
+
+\subsubsection{Squared Error Loss Function}\label{SE}
+In estimating the hypothesis indicator $A_i$, \citet{AP2016} use the following squared error loss function
+$$
+  L_{SEL} = (\delta_i-A_i),
+$$
+where $\delta_i=\delta(t_i)$ is an arbitrary decision rule with support $(-\infty,+\infty)$.
+
+
+
+
+\section{The Maximum Entropy Method}
+The maximum entropy method, where \texttt{ME.log} is the corresponding function, provides a vector of more reliable LFDR estimates based on comparing two likelihood functions constructed based on two alternative reference classes. It overcomes the lack of knowledge that specifies whether a separate reference class
+or a combined reference class should be used to get more reliable
+estimates of LFDRs for SNPs. This approach leads to a ``selected
+reference class" and giving credit to the selected reference
+class, an estimate of LFDR is computed for each SNP.
+
+\subsection{Inputs of \texttt{ME.log}}
+
+The inputs of \texttt{ME.log} are the following:
+\begin{itemize}
+ \item \texttt{stat}: test statistic values corresponding to SNPs in the separate and combined reference classes
+ \item \texttt{lfdr.C}: estimated LFDRs for SNPs in the combined reference class
+ \item \texttt{p0.C}: proportion of unassociated SNPs belonging to the combined class
+ \item \texttt{p0.S}: proportion of unassociated SNPs belonging to the separate class
+ \item \texttt{ncp.C}: the non-centrality parameter of a chi-square distribution for associated SNPs belonging to the combined reference class
+ \item \texttt{ncp.S}: the non-centrality parameter of a chi-square distribution for associated SNPs belonging to the separate reference class
+ \end{itemize}
+
+ Within the \texttt{ME.log} function, there are a series of parameters. Different positive values can be chosen for parameter $a$ indicating grades
+of evidence against the separate reference class and in favor
+of its alternative. The defalut value for this parameter is set to 3 \citep{DB2015}
+
+
+The parameter \texttt{p0} indicates the proportion of SNPs that are not associated with the disease. The parameters \texttt{lower.p0} and \texttt{upper.p0} represent pre-assumed lower and upper bounds of \texttt{p0}, respectively. By default, those values are set to 0 and 1, respectively. \texttt{lower.ncp} and \texttt{upper.ncp} are used to denote the lower and upper limits of the non-centrality parameter \texttt{ncp}, respectively. By default, those values are set to 0.1 and 50, respectively. The methodolgy behind the ME method requires that the interval [\texttt{lower.p0},\texttt{upper.p0}] be divided to \texttt{length.p0} partitions. As well, the interval [\texttt{lower.ncp},\texttt{upper.ncp}] is be divided to \texttt{length.ncp} partitions. By default, \texttt{length.p0} and \texttt{length.ncp} values are set to 200.
+
+The function \texttt{ME.log} depends on the function \texttt{lfdr.mle} for obtaining LFDR estimates. The LFDR estimates are then used in \texttt{lfdr.C} for the input of \texttt{ME.log}.
+
+\section{Using \texttt{ME.log}}
+The following subsections demonstrates the steps needed to use the \texttt{ME.log} function.
+\subsection{Obtaining Test Statistics and Associated Parameters}
+
+The code below is an example of a simulation study. Artificial SNPs are created, and test statistics are obtained. It is assumed that the separate reference class 20  artificial SNPs that are not associated with a specific disease. Also, it is assumed that the separate reference class is a subset of a combined reference class which contains 20 nonassociated and 20 associated SNPs. Given that the separate reference class is a subset of the combined reference class, the 20 SNPs in the separate reference class, each has two possible LFDR estimates.
+
+<<generating artificial SNPs, echo = TRUE>>=
+#import function "lfdr.mle" from package "LFDR.MLE"
+library(LFDR.MLE)
+
+##From the simulation study, create artificial SNPs and obtain test statistics.
+sdORS<-sdORC<-sqrt(.02) #some parameters required for simulation.
+real.OR1.S<-1.25
+real.OR1.C<-1.25
+
+nS1<-0  ##Number of artificial SNPs associated with a
+## disease in a separate reference class.
+nS2<-20 ## Number of artificial SNPs not associated with
+## a specific disease in a separate reference class.
+nC1<-20 ##Number of artificial SNPs associated with a specific disease
+## outside the separate reference class but inside a combined reference class.
+nC2<-0 ##Number of artificial SNPs not associated with a specific disease
+## outside the separate reference class but inside a combined reference class.
+
+##zS1 generates test statistics for artificial SNPs associated with a
+##specific disease in the separate reference class.
+zS1<-rnorm(nS1,mean=log(real.OR1.S),sd=sdORS)
+##zS2 generates test statistics for artificial SNPs not associated with a
+##specific disease in the separate reference class.
+zS2<-rnorm(nS2,mean=log(1),sd=sdORS)##
+zSmall<-c(zS1,zS2) ## test statistics from the 20 artificial SNPs
+
+##zC1 generates test statistics for artificial SNPs associated with a specific
+##disease in the combined reference class.
+zC1<-rnorm(nC1,mean=log(real.OR1.C),sd=sdORC)
+##zC2 generates test statistics for artificial SNPs not associated with a
+##specific disease in the combined reference class.
+zC2<-rnorm(nC2,mean=log(1),sd=sdORC)
+zBig<-c(zSmall,zC1,zC2) ## test statistics from the 40 artificial SNPs
+
+@
+
+\subsection{Obtaining LFDR Estimates Using \texttt{lfdr.mle}}
+Prior to using the function \texttt{ME.log}, chi-square test statistics need to be obtained. The test statistics from the separate and combined reference class, are transformed in order to obtain a chi-square distribution. The function \texttt{ME.log} then uses the function \texttt{lfdr.mle} from the package \texttt{LFDR.MLE} to compute LFDR estimates \citep{padilla2012estimators}.
+
+
+<<obtaining lfdr estimates, echo = TRUE>>=
+##Then obtain chi-square test statistics
+## Separate reference class
+xS1<-(zS1/sdORS)^2
+xS2<-(zS2/sdORS)^2
+xSmall<-c(xS1,xS2) ##chi-square test statistics from 20 SNPs
+## Combined reference class
+xC1<-(zC1/sdORC)^2
+xC2<-(zC2/sdORC)^2
+xBig<-c(xSmall,xC1,xC2) ##chi-square test-statistics from 40 SNPs
+
+#Using lfdr.mle, a series of arguments are used.
+dFUN=dchisq;df=1;
+lower.ncp = .1;upper.ncp = 5
+lower.p0 = 0;upper.p0 = 1;
+
+#Estimate the corresponding LFDRs using lfdr.mle
+## Separate reference class
+opt.S<-lfdr.mle(x =xSmall, dFUN = dFUN, lower.ncp = lower.ncp, upper.ncp = upper.ncp,
+                lower.p0 = lower.p0, upper.p0 = upper.p0,df=df)
+lfdr.S <- opt.S$LFDR.hat ## Estimate the corresponding LFDRs
+p0.S<-opt.S$p0.hat
+ncp.S<-opt.S$ncp.hat
+
+## Combined reference class
+opt.C<-lfdr.mle(x =xBig, dFUN = dFUN, lower.ncp = lower.ncp, upper.ncp = upper.ncp,
+                lower.p0 = lower.p0, upper.p0 = upper.p0,df=df)
+lfdr.C <- opt.C$LFDR.hat
+p0.C<-opt.C$p0.hat
+ncp.C<-opt.C$ncp.hat
+
+@
+
+\subsection{Illustrating \texttt{ME.log}}
+Now the parameters from the previous subsections can be used into the \texttt{ME.log} function.
+
+<<ME.log, echo = FALSE, results=hide>>=
+
+##### 26-11-2016
+
+########################################################
+log.likelihood<-function(x,p0.hat,ncp.hat){
+    (sum(log(p0.hat*dchisq(x,df=1,ncp=0)+(1-p0.hat)*dchisq(x,df=1,ncp=ncp.hat))))
+}
+########################################################
+log.likelihood1<-function(p0,ncp,stat){
+    log.sum<-0
+    for ( i in 1:length(stat)){
+        log1<-log(p0*dchisq(stat[i],df=1,ncp=0)+(1-p0)*dchisq(stat[i],df=1,ncp=ncp))
+        log.sum<-log.sum+log1
+    }
+    return(log.sum)
+}
+########################################################
+true.lfdr<-function(stat,pi0,ncp){
+  true.lfdrs<-c()
+  for (i in 1:length(pi0)){
+    f0<-dchisq(stat, df=1, ncp = 0)
+    f1<-dchisq(stat, df=1, ncp = ncp[i])
+    true<-(pi0[i]*f0)/((pi0[i]*f0)+(1-pi0[i])*f1)
+    true.lfdrs<-rbind(true.lfdrs,true)
+  }
+  return(true.lfdrs)
+}
+########################################################
+ME.log<-function(stat,lfdr.C,p0.C,ncp.C,p0.S,ncp.S,a=3,lower.p0=0,upper.p0=1,lower.ncp=0.1,
+                 upper.ncp=50,length.p0=200,length.ncp=200){
+  if (log.likelihood(stat,p0.C,ncp.C)-log.likelihood(stat,p0.S,ncp.S) > -(a*log(2))) {
+    LFDR.ME<-lfdr.C
+    opt.vect<-cbind(p0.C,ncp.C)
+    colnames(opt.vect)<-c('p0','ncp')
+    results<-list(p0.hat=opt.vect[,'p0'],ncp.hat=opt.vect[,'ncp'],LFDR.hat=LFDR.ME)
+  }else{
+    p0<-seq(lower.p0,upper.p0,length=length.p0)
+    ncp<-seq(lower.ncp,upper.ncp,length=length.ncp)
+    #outer(p0,ncp)
+    like1<- outer(p0,ncp, function(x,y) log.likelihood1(x,y,stat))
+    plausible<-which(like1-log.likelihood1(p0.S,ncp.S,stat)+a*log(2)>0, arr.ind = TRUE)
+    #like1[plausible]
+    p0<-p0[plausible[,1]]
+    ncp<-ncp[plausible[,2]]
+    #plot(1:1000,p0[1:1000])
+    #plot(ncp)
+    #y<-true.lfdr(stat,p0,ncp)
+    #cbind(colMins(y),colMaxs(y))
+    ls<-length(stat)
+    ME<-rep(NA,ls)
+    p0.ME<-rep(NA,ls)
+    ncp.ME<-rep(NA,ls)
+    y<-true.lfdr(stat,p0,ncp)
+    #dim(y)
+    cminy<-colMins(y)
+    cmaxy<-colMaxs(y)
+    for ( i in 1:ls){
+        if (lfdr.C[i]<cminy[i]) {
+            ME[i]<-cminy[i]
+            wpc1<-which(y[,i]==cminy[i])
+            p0.ME[i]<-p0[wpc1]
+            ncp.ME[i]<-ncp[wpc1]
+        }else if (lfdr.C[i]>cmaxy[i]) {
+            ME[i]<-cmaxy[i]
+            wpc2<-which(y[,i]==cmaxy[i])
+            p0.ME[i]<-p0[wpc2]
+            ncp.ME[i]<-ncp[wpc2]
+    }else{
+        ME[i]<-lfdr.C[i]
+        p0.ME[i]<-p0.C
+        ncp.ME[i]<-ncp.C
+      }
+    }
+
+    results<-list(p0.hat=p0.ME,ncp.hat=ncp.ME,LFDR.hat=ME)
+  }
+  return(results)
+}
+########################################################
+
+@
+
+<<example from ME.log, echo = TRUE, results=verbatim>>=
+library(stats)
+library(matrixStats)
+# Using lfdr.mle, a series of arguments are used.
+## if ommitted they will have the default values.
+LFDR.ME<-ME.log(xSmall,lfdr.C,p0.C,ncp.C,p0.S,ncp.S,a=3,lower.p0=0,upper.p0=1,lower.ncp=0.1,
+                upper.ncp=50,length.p0=200,length.ncp=200)
+
+LFDR.ME
+
+@
+
+LFDR estimates were obtained from the output as \texttt{\$LFDR.hat}. The LFDRs are of same length as the test statistic vector (\texttt{stat}) of the input. In fact, the new LFDR estimates have the same length as the SNPs falling into the intersection of both reference classes. Each  \texttt{\$LFDR.hat} is based on the corresponding  \texttt{p0} and  \texttt{ncp} given by  \texttt{\$p0.hat} and  \texttt{\$ncp.hat}. These   \texttt{\$p0.hat} and  \texttt{\$ncp.hat} are determined according to the likelihood set constructed based on two likelihood functions generated on the basis of the separate and combined reference classes. For more details refer to \citet{AP2016}.
+
+\section{\texttt{caution.parameter.actions}}\label{ZO.caution}
+This function provides three actions based on three different values for a caution parameter defined in  \citet{AP2016}.
+
+
+\subsection{Input}
+The function \texttt{caution.parameter.actions} allows for a user to input two vectors of LFDR estimates of any size. The two inputs vectors \texttt{x1} and \texttt{x2} should be of the same size. These vectors refer to LFDR estimates for SNPs falling into the intersection of the two reference classes defined in subsection \ref{Ref.Class}.
+
+\subsection{Output}
+The output of \texttt{caution.parameter.actions} is a list containing three vectors of actions which have been extensively discussed in \citet{AP2016}.
+
+\begin{itemize}
+  \item CGM1: refers to conditional-Gamma minimax action with caution parameter 1
+  \item CGM0: refer to conditional-Gamma minimin action with caution parameter 0
+  \item CGM0.5: refers to a caution-type action with caution parameter 0.5 which is a balance between CGM0 and CGM1
+\end{itemize}
+
+\texttt{CGM1}, the caution-type estimator describes the maximum amount of caution taken towards ambiguity while \texttt{CGM0} describes the minimal caution towards ambiguity \citep{DB2015}. Given an individual's prior belief of their subjective probability estimates, once the outcome is given, the individual's belief is updated. Note that the prior beliefs cannot be assessed with certainty. In this case, an individual must perform a best guess based on the prior information given to them. This is defined as ambiguity \citep{dbs1991}.
+\\ \\
+The theory behind these actions involves the loss fucntion $L_{ZO}$ introduced earlier Part \ref{ZO}. The outputs from the three caution-type decisions is either \texttt{0} or \texttt{1}.
+
+\subsubsection{Interpreting the results from \texttt{caution.parameter.actions}}
+When interpreting the results of the function, the three caution-type decisions should be considered independently. In order to simplify matters, a vector of size 1, which corresponds to SNP1, is used to help illustrate a hypothetical case.
+
+\textbf{Example 1:} Consider the following cases:\\
+%\begin{adjustwidth}{2.5em}{0pt}
+  \texttt{\$CGM1}  \\
+  \texttt{[1] 0}     \\
+  \texttt{\$CGM0}     \\
+  \texttt{[1] 0}       \\
+  \texttt{\$CGM0.5}   \\
+  \texttt{[1] 1}
+
+%\end{adjustwidth}
+
+By \textbf{Example 1}, the outputs of \texttt{CGM1} and \texttt{CGM0} contain the same value. Interpreting the values of \texttt{CGM1} and \texttt{CGM0} of SNP1, the two show a value of \texttt{0} reflecting that there is no association between SNP1 and the disease. In this case, the null hypothesis is failed to be rejected.  On the other hand, the result of \texttt{CGM0.5} is a value of \texttt{1}. Thus, the null hypothesis is rejected and it is interpreted that there is an associaiton between SNP1 and the disease. Depending on the caution-type estimator chosen, the decision can be different depending on which of \texttt{CGM1}, \texttt{CGM0} or \texttt{CGM0.5} the user chooses.
+
+
+  A more realistic example on how to interpret the results can be illustrated more effectively. From the R documentation \texttt{LFDREmpiricalBayes}, an example was provided where two vectors of size 4 are used. Noting that each index corresponds to a particular SNP value (e.g. index 1 corresponds to SNP1, index 2 corresponds to SNP2, etc.) a more detailed explanation is presented below.
+
+<<caution.parameter.actions, echo = FALSE, results=hide>>=
+library(matrixStats)
+caution.parameter.actions<- function (x1,x2,l1=4,l2=1) {
+  # l1 and l2 are our definition of the loss values. Take l1=4 amd l2=1
+  threshold=l2/(l1+l2)      # threshold for deriving the Bayes actions
+
+  if(length(x1) != length(x2)){
+    stop("Error: Vectors must be of equal length.")
+  }
+
+  if((l1 <= 0) || (l2 <= 0)){
+    stop("Error: Loss values must be greater than 0.")
+  }
+
+  for(i in 1:length(x1)){
+    if((x1[i] < 0 || x1[i] > 1)||(x2[i] < 0 || x2[i] > 1)){
+      stop("Error: Each index in vector x1 or x2 must contain a value between 0 and 1.")
+    }
+  }
+
+  x <- cbind(x1,x2)
+  infx <- rowMins(x) # infimum of LFDRs for each variant
+  supx <- rowMaxs(x) # supremum of LFDRs for each variant
+  l <- length(infx)
+  CG1<-CG0<-CG0.5<-c()
+  for (i in 1:l){
+    # To construct the CGMinimax rule (caution parameter index 1)
+    if (l1*supx[i] <= l2*(1-infx[i])){CGM1 <- 1}else {CGM1 <- 0}
+    # To construct the CGMinimin rule (caution parameter index 0)
+    if (l1*infx[i] <= l2*(1-supx[i])){CGM0 <- 1}else {CGM0 <- 0}
+    # To construct the third action with caution parameter index 1/2
+    if (l1*(supx[i]+infx[i]) <= l2*(2-supx[i]-infx[i])){CGM0.5 <-1}else{CGM0.5<- 0}
+    CG1 <- c(CG1,CGM1)
+    CG0 <- c(CG0,CGM0)
+    CG0.5 <- c(CG0.5,CGM0.5)
+  }
+
+ # cat("\nGiven a threshold of: ", threshold, "\n\n")
+  return(list(CGM1=CG1,CGM0=CG0,CGM0.5=CG0.5))
+}
+
+@
+
+\textbf{Example 2:} A basic interpretation of the outputs.
+
+<<Example1_caution.parameter.actions, echo = TRUE>>=
+LFDR.Separate <- c(.14,.8,.16,.30)
+LFDR.Combined <- c(.21,.61,.12,.10)
+
+output <- caution.parameter.actions(LFDR.Separate, LFDR.Combined)
+output
+@
+
+In this example, there are 4 SNPs. Here, SNP1, SNP2 and SNP3 have the same output for the three caution-type estimators. SNP4, on the other hand, has the same result for caution-type decisions \texttt{CGM1} and \texttt{CGM0.5} but a different result for \texttt{CGM0}. Thus, \texttt{CGM1} and \texttt{CGM0.5} reflects that there is no association between SNP4 and the disease, whereas on the basis of \texttt{CGM0} there is an association between SNP4 and the disease (the null hypothesis is rejected). Ultimately, the user would have to choose amongst one of the three caution-type estimators for their analysis. For example, in the simulation studies performed with the coronary artery disease in \citet{AP2016}, \texttt{CGM1} and \texttt{CGM0.5} were shown to perform better than \texttt{CGM0}.
+
+\section{\texttt{SEL.caution.parameter}}\label{SEL.caution}
+This function provides three actions based on three different values for a caution parameter defined in  \citet{AP2016}.
+Unlike the function \texttt{caution.parameter.actions} which is based on the $L_{ZO}$ loss function, this function is based on the $L_{SE}$ loss function introduced earlier in Part \ref{SE}.
+
+\subsection{Input}
+Much like \texttt{caution.parameter.actions}, \texttt{SEL.caution.parameter} accepts two vectors \texttt{x1} and \texttt{x2} which correspond to the two vectors of the separate and combined reference classes that were used in the former function.
+
+\subsection{Output}
+This output of this function is a list containing three vectors.  The name of the three vectors are the same as the ones in \texttt{caution.parameter.actions}, i.e. \texttt{CGM1}, \texttt{CGM0}, and \texttt{CGM0.5}. Unlike the function \texttt{caution.parameter.actions}, which returns a \texttt{0} or a \texttt{1} value, this function returns any value between \texttt{0} to \texttt{1}. The closer the value it is to zero, the higher the accuracy is interpreted in estimating the hypothesis indicator $A_i$ \citep{AP2016}.
+
+\subsection{Examples}\label{EX.Se7}
+For a better clarificiation of performance of the function  \texttt{SEL.caution.parameter}, the same example as seen in \texttt{caution.parameter.actions} is used.
+
+<<SEL.caution.parameter, echo = FALSE, results = hide>>=
+SEL.caution.parameter <- function (x1,x2) {
+
+  if(length(x1) != length(x2)){
+    stop("Vectors must be of equal length.")
+  }
+
+  for(i in 1:length(x1)){
+    if((x1[i] < 0 || x1[i] > 1)||(x2[i] < 0 || x2[i] > 1)){
+      stop("Each index in vector x1 or x2 must contain a value between 0
+           and 1.")
+    }
+  }
+
+  x <- cbind(x1,x2)
+  infx <- rowMaxs(x)
+  supx <- rowMins(x)
+  CG1<-CG0.5<-c()
+  for (i in 1: length(x1)){
+    if (supx[i]<=0.5){
+      CGM1 <- 1-supx[i]
+      CGM0.5 <- 1-infx[i]
+    }else if (infx[i]>0.5){
+      CGM1 <- 1-infx[i]
+      CGM0.5 <- 1-supx[i]
+    }else {
+      CGM1 <- 0.5
+      k <- infx[i]+supx[i]
+      if (k <= 1){
+        CGM0.5 <- 1-infx[i]
+      }else{
+        CGM0.5 <- 1-supx[i]
+      }
+    }
+    CG1 <- c(CG1,CGM1)
+    CG0.5 <- c(CG0.5,CGM0.5)
+  }
+  CG0<-1-(x1+x2)/2
+  return(list(CGM1=CG1,CGM0=CG0,CGM0.5=CG0.5))
+}
+
+@
+
+\textbf{Example 1:} Consider the same Example 1 in \texttt{caution.parameter.actions}.
+
+<<Example1_SEL.caution.parameter, echo = TRUE>>=
+LFDR.Separate <- c(.14,.8,.16,.3)
+LFDR.Combined <- c(.21,.61,.12,.1)
+
+output <- SEL.caution.parameter(LFDR.Separate, LFDR.Combined)
+output
+@
+
+Notice that the vectors have the same length in both the outputs of both \texttt{caution.parameter.\\actions} and \texttt{SEL.caution.parameter}.  In this case, each corresponding element gives an estimate of the hypothesis indicator $A_i$ from the three caution-type actions seen in \texttt{caution.parameter.\\actions}.
+
+\section{\texttt{PRGM.action}}
+\texttt{PRGM.action} is a function that computes the posterior regret Gamma minimax estimate of the hypothesis indicator $A_i$ based on the two reference classes discussed earlier in Subsection \ref{Ref.Class}. The thoery behind this function is on the basis the $L_{SE}$ loss function introduced in Part \ref{SE}.
+
+\subsection{Input}
+Similar to the functions  \texttt{caution.parameter.actions} and \texttt{SEL.caution.parameter}, the inputs are two vectors of LFDR estimates \texttt{x1} and \texttt{x2}  coresponding to the reference classes.
+
+\subsection{Output}
+The output of \texttt{PRGM.action} is equivalent to the output \texttt{CGM0} from the function \texttt{SEL.caution.\\ parameter}. It returns a list which is one minus the average of \texttt{x1} and {x2}.
+
+\subsection{Examples}
+The following example will provide a small demonstratation of the relationship between the output of \texttt{PRGM} and the \texttt{CGM0} output vector of \texttt{SEL.caution.parameter}.
+
+\textbf{Example 1:} Demonstrating the equivalence of \texttt{PRGM} and \texttt{CGM0}.
+
+<<PRGM.action, echo= FALSE, results=hide>>=
+PRGM.action <- function (x1,x2) {
+  PR=1-(x1+x2)/2
+  return(list(PRGM=PR))
+}
+@
+
+<<PRGM.action_Example 1>>=
+LFDR.Separate <- c(.14,.8,.16,.3)
+LFDR.Combined <- c(.21,.61,.12,.1)
+
+output <- PRGM.action(x1 = LFDR.Separate, x2 = LFDR.Combined)
+output
+@
+Comparing the outputs of \texttt{PRGM} and that of \texttt{CGM0} of \texttt{SEL.caution.paramter}, as seen in Subsection \ref{EX.Se7}, the outputs are the same.
+
+\section*{Acknowledgements}
+We thank Abbas Rahal and Justin Chitpin for their contributions to this package.
+
+\bibliographystyle{apalike}
+\bibliography{bibliography}
+
+\section*{Affiliation}
+\noindent David R. Bickel,\\
+Ottawa Institute of Systems Biology,\\
+Biochemistry, Microbiology and Immunology Department,\\
+Mathematics and Statistics Department.\\
+University of Ottawa\\
+451 Smyth Road,\\
+Ottawa, Ontario.\\
+E-mail: \hyperlink{davidemail}{dbickel@uottawa.ca}
+
+\noindent Ali Karimnezhad,\\
+Ottawa Hospital Research Institute,\\
+Biochemistry, Microbiology and Immunology Department,\\
+University of Ottawa\\
+451 Smyth Road,\\
+Ottawa, Ontario.\\
+E-mail: \hyperlink{aliemail}{a.karimnezhad@uottawa.ca}
+
+
+
+
+\end{document}

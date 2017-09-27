@@ -1,0 +1,4 @@
+importFrom(matrixStats,rowMins,rowMaxs,colMins,colMaxs)
+importFrom(stats,dchisq)
+import(R6)
+export(caution.parameter.actions, ME.log, SEL.caution.parameter, PRGM.action)
